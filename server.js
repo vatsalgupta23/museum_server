@@ -1,3 +1,93 @@
+// import 'dotenv/config';
+// import express from 'express';
+// import cors from 'cors';
+// import { WebSocketServer } from 'ws';
+
+// const app = express();
+// app.use(cors());
+// app.use(express.json());
+
+// const PORT = process.env.PORT || 3000;
+// const STARK_SHARED_SECRET = process.env.STARK_SHARED_SECRET || ""; // optional
+
+// // --- Fake data store (map IP name -> exhibit) ---
+// const exhibits = [
+//     { id: 'ex_tundra', title: 'Tundra', intelligencePointName: 'Tundra', audioUrl: '...' },
+//     { id: 'ex_skulls', title: 'Dinosaur Skulls', intelligencePointName: 'Dinosaur Skulls', audioUrl: '...' },
+// ];
+// const byPoint = new Map(exhibits.map(e => [e.intelligencePointName, e]));
+
+// // --- WebSocket: app connects here to receive events in real-time ---
+// const server = app.listen(PORT, () => console.log(`API on :${PORT}`));
+// const wss = new WebSocketServer({ server });
+
+// // Track connected app clients (optionally by session)
+// const clients = new Set();
+
+// wss.on('connection', (ws) => {
+//     clients.add(ws);
+//     ws.on('close', () => clients.delete(ws));
+// });
+
+// // Helper: broadcast to all app clients
+// function broadcast(msg) {
+//     const json = JSON.stringify(msg);
+//     for (const ws of clients) {
+//         try { ws.send(json); } catch { }
+//     }
+// }
+
+// // --- (1) REQUIRED by Stark: receive RFID notifications (webhook) ---
+// // Spec: POST /api/rfidnotifications with RfidTagNotification JSON. :contentReference[oaicite:1]{index=1}
+// app.post('/api/rfidnotifications', (req, res) => {
+//     // Optional bearer check (ask Stark to include your secret)
+//     const auth = req.headers.authorization || '';
+//     if (STARK_SHARED_SECRET && auth !== `Bearer ${STARK_SHARED_SECRET}`) {
+//         return res.sendStatus(401);
+//     }
+
+//     const n = req.body || {};
+//     const type = (n.NotificationType || '').toLowerCase();  // 'entrance' or 'exit' :contentReference[oaicite:2]{index=2}
+//     const point = n.IntelligencePointName || n.ReadPointName; // name of read point/IP :contentReference[oaicite:3]{index=3}
+
+//     console.log('[RFID]', type, n.Identifier, point, n.ReadTime);
+
+//     const exhibit = byPoint.get(point);
+//     if (type === 'entrance' && exhibit) {
+//         // Tell the app to play audio for this exhibit (no REST, just WS)
+//         broadcast({ type: 'PLAY_EXHIBIT', exhibitId: exhibit.id, title: exhibit.title, audioUrl: exhibit.audioUrl });
+//     }
+//     if (type === 'exit' && exhibit) {
+//         broadcast({ type: 'STOP_EXHIBIT', exhibitId: exhibit.id });
+//     }
+
+//     // Per Stark spec: return only status code, no body. :contentReference[oaicite:4]{index=4}
+//     return res.sendStatus(200);
+// });
+
+// // 0) Health check (HTTP)
+// app.get('/healthz', (req, res) => res.status(200).json({ ok: true }));
+
+// // 1) On every new WS connection, send a welcome message
+// wss.on('connection', (ws) => {
+//     clients.add(ws);
+//     try { ws.send(JSON.stringify({ type: 'WELCOME', msg: 'WS connected' })); } catch { }
+//     ws.on('close', () => clients.delete(ws));
+// });
+
+// // 2) Debug broadcast endpoint (HTTP -> WS)
+// // curl this to simulate Stark telling you to play an exhibit
+// app.post('/api/debug/broadcast', (req, res) => {
+//     const { title = 'Tundra', type = 'PLAY_EXHIBIT', audioUrl } = req.body || {};
+//     broadcast({
+//         type,                         // 'PLAY_EXHIBIT' or 'STOP_EXHIBIT'
+//         title,                        // must match a title your Flutter maps to audio
+//         audioUrl: audioUrl || 'https://example.com/audio.mp3' // optional if streaming
+//     });
+//     return res.sendStatus(200);
+// });
+
+
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -8,59 +98,100 @@ app.use(cors());
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
-const STARK_SHARED_SECRET = process.env.STARK_SHARED_SECRET || ""; // optional
+const STARK_SHARED_SECRET = process.env.STARK_SHARED_SECRET || ''; // optional
 
-// --- Fake data store (map IP name -> exhibit) ---
+// --- Exhibit map (maps Stark's point names to exhibits/audio) ---
 const exhibits = [
     { id: 'ex_tundra', title: 'Tundra', intelligencePointName: 'Tundra', audioUrl: '...' },
     { id: 'ex_skulls', title: 'Dinosaur Skulls', intelligencePointName: 'Dinosaur Skulls', audioUrl: '...' },
 ];
-const byPoint = new Map(exhibits.map(e => [e.intelligencePointName, e]));
+const byPoint = new Map(exhibits.map((e) => [e.intelligencePointName, e]));
 
-// --- WebSocket: app connects here to receive events in real-time ---
-const server = app.listen(PORT, () => console.log(`API on :${PORT}`));
+// --- Start server ---
+const server = app.listen(PORT, () => console.log(`✅ API running on :${PORT}`));
+
+// --- WebSocket setup ---
 const wss = new WebSocketServer({ server });
-
-// Track connected app clients (optionally by session)
 const clients = new Set();
 
-wss.on('connection', (ws) => {
+// Single connection handler
+wss.on('connection', (ws, req) => {
     clients.add(ws);
-    ws.on('close', () => clients.delete(ws));
+    console.log('[WS] Client connected from', req?.headers['x-forwarded-for'] || req?.socket?.remoteAddress);
+
+    // ✅ Send welcome so Flutter chip shows "Connected"
+    try {
+        ws.send(JSON.stringify({ type: 'WELCOME', msg: 'WS connected' }));
+    } catch (err) {
+        console.error('[WS] Failed to send welcome:', err);
+    }
+
+    ws.on('close', () => {
+        clients.delete(ws);
+        console.log('[WS] Client disconnected');
+    });
 });
 
-// Helper: broadcast to all app clients
+// (Optional) Log when upgrade happens
+server.on('upgrade', (req) => {
+    console.log('[WS] HTTP upgrade from', req.headers['x-forwarded-for'] || req.socket.remoteAddress);
+});
+
+// --- Broadcast helper ---
 function broadcast(msg) {
     const json = JSON.stringify(msg);
     for (const ws of clients) {
-        try { ws.send(json); } catch { }
+        try {
+            ws.send(json);
+        } catch (e) {
+            console.error('[WS] Send error:', e);
+        }
     }
 }
 
-// --- (1) REQUIRED by Stark: receive RFID notifications (webhook) ---
-// Spec: POST /api/rfidnotifications with RfidTagNotification JSON. :contentReference[oaicite:1]{index=1}
+// --- Health check ---
+app.get('/healthz', (req, res) => res.status(200).json({ ok: true }));
+
+// --- Debug broadcast endpoint (manual test) ---
+app.post('/api/debug/broadcast', (req, res) => {
+    const { title = 'Tundra', type = 'PLAY_EXHIBIT', audioUrl } = req.body || {};
+    broadcast({
+        type,
+        title,
+        audioUrl: audioUrl || 'https://example.com/audio.mp3',
+    });
+    return res.sendStatus(200);
+});
+
+// --- Stark webhook: POST /api/rfidnotifications ---
 app.post('/api/rfidnotifications', (req, res) => {
-    // Optional bearer check (ask Stark to include your secret)
     const auth = req.headers.authorization || '';
     if (STARK_SHARED_SECRET && auth !== `Bearer ${STARK_SHARED_SECRET}`) {
         return res.sendStatus(401);
     }
 
     const n = req.body || {};
-    const type = (n.NotificationType || '').toLowerCase();  // 'entrance' or 'exit' :contentReference[oaicite:2]{index=2}
-    const point = n.IntelligencePointName || n.ReadPointName; // name of read point/IP :contentReference[oaicite:3]{index=3}
+    const type = (n.NotificationType || '').toLowerCase(); // 'entrance' or 'exit'
+    const point = n.IntelligencePointName || n.ReadPointName;
 
     console.log('[RFID]', type, n.Identifier, point, n.ReadTime);
 
     const exhibit = byPoint.get(point);
     if (type === 'entrance' && exhibit) {
-        // Tell the app to play audio for this exhibit (no REST, just WS)
-        broadcast({ type: 'PLAY_EXHIBIT', exhibitId: exhibit.id, title: exhibit.title, audioUrl: exhibit.audioUrl });
+        broadcast({
+            type: 'PLAY_EXHIBIT',
+            exhibitId: exhibit.id,
+            title: exhibit.title,
+            audioUrl: exhibit.audioUrl,
+        });
     }
     if (type === 'exit' && exhibit) {
-        broadcast({ type: 'STOP_EXHIBIT', exhibitId: exhibit.id });
+        broadcast({
+            type: 'STOP_EXHIBIT',
+            exhibitId: exhibit.id,
+        });
     }
 
-    // Per Stark spec: return only status code, no body. :contentReference[oaicite:4]{index=4}
-    return res.sendStatus(200);
+    return res.sendStatus(200); // Stark expects only status code
 });
+
