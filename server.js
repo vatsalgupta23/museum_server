@@ -165,10 +165,10 @@ app.post('/api/debug/broadcast', (req, res) => {
 
 // --- Stark webhook: POST /api/rfidnotifications ---
 app.post('/api/rfidnotifications', (req, res) => {
-    const auth = req.headers.authorization || '';
-    if (STARK_SHARED_SECRET && auth !== `Bearer ${STARK_SHARED_SECRET}`) {
-        return res.sendStatus(401);
-    }
+    // const auth = req.headers.authorization || '';
+    // if (STARK_SHARED_SECRET && auth !== `Bearer ${STARK_SHARED_SECRET}`) {
+    //     return res.sendStatus(401);
+    // }
 
     const n = req.body || {};
     const type = (n.NotificationType || '').toLowerCase(); // 'entrance' or 'exit'
