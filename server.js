@@ -102,10 +102,21 @@ const STARK_SHARED_SECRET = process.env.STARK_SHARED_SECRET || ''; // optional
 
 // --- Exhibit map (maps Stark's point names to exhibits/audio) ---
 const exhibits = [
-    { id: 'ex_tundra', title: 'Tundra', intelligencePointName: 'Tundra', audioUrl: '...' },
-    { id: 'ex_skulls', title: 'Dinosaur Skulls', intelligencePointName: 'Dinosaur Skulls', audioUrl: '...' },
+    { id: 'ex_tundra', title: 'Tundra', intelligencePoint: 'Tundra' },
+    { id: 'ex_skeletons', title: 'Skeletons', intelligencePoint: 'Skeletons' },
+    { id: 'ex_boreal', title: 'Boreal forest', intelligencePoint: 'Boreal Forest'},
+    { id: 'ex_alpine', title: 'Alpine', intelligencePoint: 'Alpine/Montane' },
+    { id: 'ex_skulls', title: 'Dinosaur Skulls', intelligencePoint: 'Skulls' },
+    { id: 'ex_casts', title: 'Casts', intelligencePoint: 'Casts' },
+    { id: 'ex_east_entry', title: 'Habitat Hall', intelligencePoint: 'East Entrance' },
+    { id: 'ex_west_entry', title: 'Habitat Hall', intelligencePoint: 'West Entrance' },
+    { id: 'ex_desert', title: 'Desert', intelligencePoint: 'Desert' },
+    { id: 'ex_grassland', title: 'Grassland', intelligencePoint: 'Grassland' },
+    { id: 'ex_rainforest', title: 'Rainforest', intelligencePoint: 'Tropical Rain Forest' },
+    { id: 'ex_deciduous', title: 'Deciduous', intelligencePoint: 'Eastern Deciduous' },
+
 ];
-const byPoint = new Map(exhibits.map((e) => [e.intelligencePointName, e]));
+const byPoint = new Map(exhibits.map((e) => [e.intelligencePoint, e]));
 
 // --- Start server ---
 const server = app.listen(PORT, () => console.log(`✅ API running on :${PORT}`));
@@ -172,10 +183,11 @@ app.post('/api/rfidnotifications', (req, res) => {
     console.log('📡 RFID RAW:', JSON.stringify(req.body, null, 2));
 
     const n = req.body || {};
-    const type = (n.NotificationType || '').toLowerCase(); // 'entrance' or 'exit'
-    const point = n.IntelligencePointName || n.ReadPointName;
+    const type = (n.NotificationType || n.ReadType || '').toLowerCase();
+    const identifier = n.Identifier || n.PrimaryIdentifier; // 'entrance' or 'exit'
+    const point = n.IntelligencePointName || n.ReadPointName || n.IntelligencePoint;
 
-    console.log('[RFID]', type, n.Identifier, point, n.ReadTime);
+    console.log('[RFID]', type, identifier, point, n.ReadTime);
 
     const exhibit = byPoint.get(point);
     if (type === 'entrance' && exhibit) {
@@ -183,7 +195,7 @@ app.post('/api/rfidnotifications', (req, res) => {
             type: 'PLAY_EXHIBIT',
             exhibitId: exhibit.id,
             title: exhibit.title,
-            audioUrl: exhibit.audioUrl,
+        
         });
     }
     if (type === 'exit' && exhibit) {
