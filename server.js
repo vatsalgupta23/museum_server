@@ -169,6 +169,7 @@ app.post('/api/rfidnotifications', (req, res) => {
     // if (STARK_SHARED_SECRET && auth !== `Bearer ${STARK_SHARED_SECRET}`) {
     //     return res.sendStatus(401);
     // }
+    console.log('📡 RFID RAW:', JSON.stringify(req.body, null, 2));
 
     const n = req.body || {};
     const type = (n.NotificationType || '').toLowerCase(); // 'entrance' or 'exit'
