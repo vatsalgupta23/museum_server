@@ -184,10 +184,14 @@ app.post('/api/rfidnotifications', (req, res) => {
 
     const n = req.body || {};
     const type = (n.NotificationType || n.ReadType || '').toLowerCase();
-    const identifier = n.Identifier || n.PrimaryIdentifier; // 'entrance' or 'exit'
+    const identifier = n.Identifier || n.PrimaryIdentifier || ''; // 'entrance' or 'exit'
     const point = n.IntelligencePointName || n.ReadPointName || n.IntelligencePoint;
 
-    console.log('[RFID]', type, identifier, point, n.ReadTime);
+    const shortId = identifier.length >= 4
+        ? identifier.slice(-4)
+        : identifier;
+
+    console.log('[RFID]', type, identifier,shortId, point, n.ReadTime);
 
     const exhibit = byPoint.get(point);
     if (type === 'entrance' && exhibit) {
@@ -195,6 +199,7 @@ app.post('/api/rfidnotifications', (req, res) => {
             type: 'PLAY_EXHIBIT',
             exhibitId: exhibit.id,
             title: exhibit.title,
+            shortId,
         
         });
     }
@@ -202,6 +207,7 @@ app.post('/api/rfidnotifications', (req, res) => {
         broadcast({
             type: 'STOP_EXHIBIT',
             exhibitId: exhibit.id,
+            shortId,    
         });
     }
 
